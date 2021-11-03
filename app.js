@@ -31,7 +31,7 @@ app.get('/', async (req, res) => {
 
 	await Promise.all(promises).then((values) => htmlContents = values);
 
-    const date = moment().format("DD/MM/YYYY");
+    const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
     const getDateDatas = await db.Currency.findAll({ where: { date } })
     const isTodayDataEntered = getDateDatas.length;
     const history = await db.Currency.findAll({
