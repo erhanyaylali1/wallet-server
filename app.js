@@ -42,7 +42,7 @@ app.get('/', async (req, res) => {
             dailyDifference = dailyDifference.slice(0, 1) + dailyDifference.slice(2, dailyDifference.length)
         } else {
             name = el.window.document.querySelector('.sc-1q9q90x-0.jCInrl.h1').textContent.slice(0, -3);	
-            currentPrice = el.window.document.querySelector('.priceValue').textContent.slice(1);	
+            currentPrice = el.window.document.querySelector('.priceValue').textContent.slice(1).replace(",","");	
             if(el.window.document.querySelector('.sc-15yy2pl-0.gEePkg')){
                 dailyDifference = ''.concat(el.window.document.querySelector('.sc-15yy2pl-0.gEePkg').textContent.slice(0, -1));
             } else {   
