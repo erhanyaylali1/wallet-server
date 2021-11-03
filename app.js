@@ -2,12 +2,14 @@ const express = require('express')
 const jsdom = require("jsdom");
 const got = require('got');
 const cors = require("cors");
+const db = require('./db.js');
+const moment = require('moment');
 
 const app = express();
+const { JSDOM } = jsdom;
+
 app.use(express.json());
 app.use(cors());
-const port = 8080;
-const { JSDOM } = jsdom;
 
 app.get('/', async (req, res) => {
 	
@@ -17,8 +19,9 @@ app.get('/', async (req, res) => {
     const assets = [11, 10417, 19397, 525, 0.00232, 0.04277815, 0.34485902, 0.49, 0];
 	const result = [];
 	let htmlContents = [];
-
     const promises = [];
+
+    await db.sequelize.sync({ alter: true, force: false });
 
     fundNames.forEach((el) => promises.push(got(`https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=${el}`).then(res => new JSDOM(res.body))))
 
@@ -27,6 +30,16 @@ app.get('/', async (req, res) => {
     promises.push(got("https://www.bloomberght.com/doviz/dolar").then(res => new JSDOM(res.body)))
 
 	await Promise.all(promises).then((values) => htmlContents = values);
+
+    const date = moment().format("DD/MM/YYYY");
+    const getDateDatas = await db.Currency.findAll({ where: { date } })
+    const isTodayDataEntered = getDateDatas.length;
+    const history = await db.Currency.findAll({
+        order: [
+            ['createdAt', 'DESC'],
+        ],
+        limit: 240
+    })
 
     htmlContents.forEach((el, index) => {
         let name, currentPrice, dailyDifference;
@@ -52,22 +65,30 @@ app.get('/', async (req, res) => {
 		result.push({ name, currentPrice, dailyDifference })
     });
 
+    let totalAssets = 0;
     result.forEach((el, index) => {
         if(index < 4){
             el.asset = assets[index] * parseFloat(el.currentPrice).toFixed(2);
             el.short = shorts[index];
+            totalAssets += el.asset;
         } else if (index < 8) {
             el.asset = parseFloat(assets[index]) * parseFloat(el.currentPrice.replace(",","")) * parseFloat(result[8].currentPrice.replace(",","."))
             el.asset = parseFloat(el.asset).toFixed(2);
             el.short = shorts[index];
+            totalAssets += parseFloat(el.asset);
         }
         result[index] = el;
     })
+    
+    if(!isTodayDataEntered){
+        db.Currency.create({ totalAssets: totalAssets.toFixed(2), date });
+    }
 
-    res.send(result);
+    res.send({ result, history });
 
 });
 
+const port = 8080;
 app.listen(port, () => {
   	console.log(`Example app listening on port ${port}!`)
 });
