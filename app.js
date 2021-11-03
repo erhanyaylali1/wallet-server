@@ -84,7 +84,7 @@ app.get('/', async (req, res) => {
         db.Currency.create({ totalAssets: totalAssets.toFixed(2), date });
     }
 
-    res.send({ result, history, date });
+    res.send({ result, history });
 
 });
 
