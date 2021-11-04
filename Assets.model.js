@@ -1,18 +1,12 @@
 module.exports = (sequelize, DataTypes) => {
 
-    const Currency = sequelize.define('Currency', {
+    const Assets = sequelize.define('Assets', {
         id: {
             primaryKey: true,
             type: DataTypes.DOUBLE,
             autoIncrement: true,
         },
-        name: {
-            type: DataTypes.STRING,
-        },
-        currentPrice: {            
-            type: DataTypes.STRING,
-        }, 
-        totalAsset: {            
+        totalAssets: {            
             type: DataTypes.DOUBLE,
         }, 
         date: {
@@ -22,5 +16,5 @@ module.exports = (sequelize, DataTypes) => {
       freezeTableName: true
     });  
 
-    return Currency;
+    return Assets;
 };
