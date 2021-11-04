@@ -21,7 +21,7 @@ app.get('/', async (req, res) => {
 	let htmlContents = [];
     const promises = [];
 
-    await db.sequelize.sync({ alter: true, force: false });
+    await db.sequelize.sync({ alter: false, force: false });
 
     fundNames.forEach((el) => promises.push(got(`https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=${el}`).then(res => new JSDOM(res.body))))
 
@@ -33,13 +33,7 @@ app.get('/', async (req, res) => {
 
     const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
     const getDateDatas = await db.Currency.findAll({ where: { date } })
-    const isTodayDataEntered = getDateDatas.length;
-    const history = await db.Currency.findAll({
-        order: [
-            ['createdAt', 'DESC'],
-        ],
-        limit: 240
-    })
+    
 
     htmlContents.forEach((el, index) => {
         let name, currentPrice, dailyDifference;
@@ -68,21 +62,30 @@ app.get('/', async (req, res) => {
     let totalAssets = 0;
     result.forEach((el, index) => {
         if(index < 4){
-            el.asset = assets[index] * parseFloat(el.currentPrice).toFixed(2);
+            el.asset = assets[index] * parseFloat(el.currentPrice);
             el.short = shorts[index];
             totalAssets += el.asset;
         } else if (index < 8) {
             el.asset = parseFloat(assets[index]) * parseFloat(el.currentPrice.replace(",","")) * parseFloat(result[8].currentPrice.replace(",","."))
-            el.asset = parseFloat(el.asset).toFixed(2);
             el.short = shorts[index];
             totalAssets += parseFloat(el.asset);
         }
         result[index] = el;
     })
     
-    if(!isTodayDataEntered){
-        db.Currency.create({ totalAssets: totalAssets.toFixed(2), date });
+    if(getDateDatas.length === 0){
+        await db.Currency.create({ totalAssets: totalAssets.toFixed(2), date });
+    } else if (getDateDatas[0].totalAssets < totalAssets) {
+        await getDateDatas[0].destroy();
+        await db.Currency.create({ totalAssets: totalAssets.toFixed(2), date });
     }
+
+    const history = await db.Currency.findAll({
+        order: [
+            ['createdAt', 'DESC'],
+        ],
+        limit: 30
+    })
 
     res.send({ result, history });
 
