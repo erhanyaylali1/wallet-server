@@ -87,7 +87,7 @@ app.get('/', async (req, res) => {
         limit: 30
     })
 
-    res.send({ result, history });
+    res.send({ result, history, totalAssets });
 
 });
 
