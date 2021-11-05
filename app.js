@@ -17,7 +17,7 @@ app.get('/', async (req, res) => {
     const cryptoNames = ["bitcoin", "ethereum", "binance-coin", "solana"];
     const shorts = ["YFAY-1", "AFA", "AFT", "IPJ", "BTC", "ETH", "BNB", "SOL"];
     const assets = [11, 10417, 19397, 525, 0.00232, 0.04277815, 0.34485902, 0.49, 0];
-	const result = [];
+	const result = [];      
 	let htmlContents = [];
     const promises = [];
 
@@ -98,7 +98,7 @@ app.get('/', async (req, res) => {
     }
 
     const history = await db.Assets.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 30 })
-    const historyCurrency = await db.Currency.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 30 })
+    const historyCurrency = await db.Currency.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 240 })
 
     res.send({ result, history, totalAssets, historyCurrency });
 
