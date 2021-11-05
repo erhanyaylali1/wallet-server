@@ -33,6 +33,7 @@ app.get('/', async (req, res) => {
 
     const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
     const getDateDatas = await db.Assets.findAll({ where: { date } });
+    const getCurrencyDatas = await db.Currency.findAll({ where: { date } });
 
     htmlContents.forEach((el, index) => {
         let name, currentPrice, dailyDifference;
@@ -71,18 +72,30 @@ app.get('/', async (req, res) => {
         }
         result[index] = el;
     })
-    
-    if(getDateDatas.length === 0){
-        await db.Assets.create({ totalAssets: totalAssets.toFixed(2), date });
+
+    if(getCurrencyDatas.length == 0){
         for await(const el of result.slice(0,8)){
             db.Currency.create({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date })
         }
+    } else {
+        for await(const el of result.slice(0,8)){
+            const temp = getCurrencyDatas.filter((el2) => el2.name === el.short);
+            if(el.asset < temp[0].totalAsset){
+                await db.Currency.update({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date }, {
+                    where: {
+                        id: temp[0].id
+                    }
+                })
+            }
+        }
+    }
+    
+    if(getDateDatas.length === 0){
+        await db.Assets.create({ totalAssets: totalAssets.toFixed(2), date });
     } else if (getDateDatas[0].totalAssets > totalAssets) {
         await getDateDatas[0].destroy();
         await db.Assets.create({ totalAssets: totalAssets.toFixed(2), date });
     }
-
-    
 
     const history = await db.Assets.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 30 })
     const historyCurrency = await db.Currency.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 30 })
