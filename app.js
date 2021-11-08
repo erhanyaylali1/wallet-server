@@ -2,51 +2,69 @@ const express = require('express')
 const jsdom = require("jsdom");
 const got = require('got');
 const cors = require("cors");
-const db = require('./db.js');
 const moment = require('moment');
+const bcrypt = require("bcryptjs");
+const jwt = require("jsonwebtoken")
+const db = require('./config/db.js');
+const auth = require("./middleware/auth");
+const { Op } = require("sequelize");
+
+require("dotenv").config();
 
 const app = express();
 const { JSDOM } = jsdom;
 
 app.use(express.json());
 app.use(cors());
+db.sequelize.sync({ alter: false, force: false });
 
-app.get('/', async (req, res) => {
-	
-	const fundNames = ["YAY", "AFA", "AFT", "IPJ"];
-    const cryptoNames = ["bitcoin", "ethereum", "binance-coin", "solana"];
-    const shorts = ["YFAY-1", "AFA", "AFT", "IPJ", "BTC", "ETH", "BNB", "SOL"];
-    const assets = [11, 10417, 19397, 525, 0.00232, 0.04277815, 0.34485902, 0.49, 0];
-	const result = [];      
+app.get('/get-user-table-data', auth, async (req, res) => {
+
+    const user = await db.User.findOne({ 
+        where: { 
+            email: req.user.email 
+        },
+        include: [{ 
+            model: db.Asset
+        }]
+    });
+
+    const quantities = user.Assets.map(el => el.UserHasAsset.quantity)
+    const shorts = user.Assets.map(el => el.short)
+    const cryptos = user.Assets.filter(el => el.id < 16).map(el => el.name)
+    const funds = user.Assets.filter(el => el.id >= 16).map(el => el.short)
+    const fundsIndex = cryptos.length;
+
+    console.log(cryptos)
+
+    const result = [];      
 	let htmlContents = [];
     const promises = [];
 
-    await db.sequelize.sync({ alter: false, force: false });
-
-    fundNames.forEach((el) => promises.push(got(`https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=${el}`).then(res => new JSDOM(res.body))))
-
-    cryptoNames.forEach((el) => promises.push(got(`https://coinmarketcap.com/currencies/${el}`).then(res => new JSDOM(res.body))))
-
+    cryptos.forEach((el) => promises.push(got(`https://coinmarketcap.com/currencies/${el}`).then(res => new JSDOM(res.body))))
+    funds.forEach((el) => promises.push(got(`https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=${el}`).then(res => new JSDOM(res.body))))
     promises.push(got("https://www.bloomberght.com/doviz/dolar").then(res => new JSDOM(res.body)))
 
-	await Promise.all(promises).then((values) => htmlContents = values);
-
+    await Promise.all(promises).then((values) => htmlContents = values);
+    
     const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
-    const getDateDatas = await db.Assets.findAll({ where: { date } });
-    const getCurrencyDatas = await db.Currency.findAll({ where: { date } });
+    const getDateDatas = await db.UserTotalAsset.findAll({ where: { date, UserId: user.id } });
+    const getCurrencyDatas = await db.UserEachAssetTotal.findAll({ where: { date, UserId: user.id } });
 
     htmlContents.forEach((el, index) => {
+        console.log("-------------------------")
+        console.log(fundsIndex)
         let name, currentPrice, dailyDifference;
-        
-        if(index < 4) {
-            name = el.window.document.getElementById('MainContent_FormViewMainIndicators_LabelFund').textContent;	
-            currentPrice = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[0].querySelector("span").textContent.replace(",",".");	
-            dailyDifference = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[1].querySelector("span").textContent.slice(1).replace(",",".");
-        } else if(index === htmlContents.length - 1) {
+        if(index === htmlContents.length - 1) {
             name = "Dolar";	
             currentPrice = el.window.document.querySelector('.widget-interest-detail.type1 h1 span').textContent;
             dailyDifference = el.window.document.querySelector('.widget-interest-detail.type1 h1 span.bulk').textContent;	
             dailyDifference = dailyDifference.slice(0, 1) + dailyDifference.slice(2, dailyDifference.length)
+        } else if(index >= fundsIndex) {
+            console.log(index)
+            name = el.window.document.getElementById('MainContent_FormViewMainIndicators_LabelFund').textContent;	
+            currentPrice = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[0].querySelector("span").textContent.replace(",",".");	
+            dailyDifference = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[1].querySelector("span").textContent.slice(1).replace(",",".");
         } else {
             name = el.window.document.querySelector('.sc-1q9q90x-0.jCInrl.h1').textContent.slice(0, -3);	
             currentPrice = el.window.document.querySelector('.priceValue').textContent.slice(1).replace(",","");	
@@ -61,12 +79,12 @@ app.get('/', async (req, res) => {
 
     let totalAssets = 0;
     result.forEach((el, index) => {
-        if(index < 4){
-            el.asset = assets[index] * parseFloat(el.currentPrice);
+        if(index < fundsIndex){
+            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice)  * parseFloat(result[result.length - 1].currentPrice.replace(",","."));
             el.short = shorts[index];
             totalAssets += el.asset;
-        } else if (index < 8) {
-            el.asset = parseFloat(assets[index]) * parseFloat(el.currentPrice.replace(",","")) * parseFloat(result[8].currentPrice.replace(",","."))
+        } else if (index < result.length - 1) {
+            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice.replace(",",""))
             el.short = shorts[index];
             totalAssets += parseFloat(el.asset);
         }
@@ -74,14 +92,16 @@ app.get('/', async (req, res) => {
     })
 
     if(getCurrencyDatas.length == 0){
-        for await(const el of result.slice(0,8)){
-            db.Currency.create({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date })
+        for await(const el of result.slice(0, result.length - 1)){
+            const tempAsset = await db.UserEachAssetTotal.create({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date });
+            await user.addEachAssets(tempAsset);
         }
     } else {
-        for await(const el of result.slice(0,8)){
+        for await(const el of result.slice(0, result.length - 1)){
             const temp = getCurrencyDatas.filter((el2) => el2.name === el.short);
-            if(el.asset < temp[0].totalAsset){
-                await db.Currency.update({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date }, {
+            console.log(JSON.stringify(temp, null, 4))
+            if(el.asset > temp[0].totalAsset){
+                await db.UserEachAssetTotal.update({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date }, {
                     where: {
                         id: temp[0].id
                     }
@@ -89,20 +109,251 @@ app.get('/', async (req, res) => {
             }
         }
     }
-    
+
     if(getDateDatas.length === 0){
-        await db.Assets.create({ totalAssets: totalAssets.toFixed(2), date });
-    } else if (getDateDatas[0].totalAssets > totalAssets) {
+        const newTotalAsset = await db.UserTotalAsset.create({ totalAssets, date });
+        await user.addTotalAssets(newTotalAsset)
+    } else if (getDateDatas[0].totalAssets < totalAssets) {
         await getDateDatas[0].destroy();
-        await db.Assets.create({ totalAssets: totalAssets.toFixed(2), date });
+        const newTotalAsset = await db.UserTotalAsset.create({ totalAssets, date });
+        await user.addTotalAssets(newTotalAsset)
     }
 
-    const history = await db.Assets.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 30 })
-    const historyCurrency = await db.Currency.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 240 })
+    const history = await db.UserTotalAsset.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 30, where: { UserId: user.id } })
+    const historyCurrency = await db.UserEachAssetTotal.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 240, where: { UserId: user.id } })
 
-    res.send({ result, history, totalAssets, historyCurrency });
+    res.send({ result, quantities, totalAssets, history, historyCurrency });
 
+})
+
+app.post('/register', async (req, res) => {
+
+    try {
+
+        const { name, email, password, selectedCryptos, selectedFunds } = req.body;
+    
+        if (!(email && password && name)) {
+            res.status(400).send("All input is required");
+        }
+    
+        const oldUser = await db.User.findOne({ where: { email } });
+    
+        if (oldUser !== null) {
+          return res.status(409).send("User Already Exist. Please Login");
+        }
+
+        encryptedPassword = await bcrypt.hash(password, 10);
+    
+        const user = await db.User.create({
+            name,
+            email, 
+            password: encryptedPassword,
+        });
+
+        
+        let promises = [];
+        let assets = [];
+
+        selectedFunds.forEach(fund => promises.push(db.Asset.findOne({ where: { short: fund } })))
+        selectedCryptos.forEach(coin => promises.push(db.Asset.findOne({ where: { name: coin } })))
+
+	    await Promise.all(promises).then((values) => assets = values);
+        
+        promises = [];
+        assets.forEach((el) => user.addAsset(el))
+
+	    await Promise.all(promises).then((values) => assets = values);
+
+        const token = await jwt.sign(
+            { user_id: user.id, email },
+            process.env.TOKEN_KEY
+        );
+
+        user.token = token;
+        res.status(201).json({ ...user.dataValues, token });
+      } catch (err) {
+        res.status(400).send(err);
+      }
+    
+})
+
+app.post('/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+    
+        if (!(email && password)) {
+          res.status(400).send("All input is required");
+        }
+
+        const user = await db.User.findOne({ where: { email }});
+    
+        if (user !== null) {
+
+            if(await bcrypt.compare(password, user.password)) {
+
+                const token = await jwt.sign(
+                    { user_id: user.id, email },
+                    process.env.TOKEN_KEY,
+                );
+                user.token = token;
+                res.status(200).json({ ...user.dataValues, token });
+            
+            } else {
+                res.send(404, { message: "Invalid Password" });
+            }
+
+        } else {
+            res.send(404, { message: "Invalid Email" });
+        }
+
+      } catch (err) {
+        console.log(err);
+      }
+    
+})
+
+app.get('/get-user-with-token', auth, async (req, res) => {
+
+    const user = await db.User.findOne({ 
+        where: { 
+            email: req.user.email 
+        }
+    });
+  
+    const token = await jwt.sign(
+        { user_id: user.id, email: user.email },
+        process.env.TOKEN_KEY   
+    );
+
+    res.status(200).json({ ...user.dataValues, token });
+})
+
+app.get("/get-user-profile", auth, async (req, res) => {
+    
+    const user = await db.User.findOne({ 
+        where: { 
+            email: req.user.email 
+        },
+        include: [{ 
+            model: db.Asset
+        }]
+    });
+
+    if(user !== null) {
+        res.status(200).send(user);
+    } else {
+        res.status(404).send("User Not Found!");
+    }
+    
 });
+
+app.post('/update-user-asset', auth, async (req, res) => {
+    
+    try {
+        
+        const user = await db.User.findOne({ 
+            where: { 
+                email: req.user.email 
+            }
+        });
+    
+        const rel = await db.UserHasAssetModel.findOne({
+            where: {
+                UserId: user.id,
+                AssetId: req.body.id
+            }
+        })
+    
+        rel.quantity = req.body.quantity;
+    
+        await rel.save();
+    
+        res.status(201).send("Asset Updated");
+    } catch (err) {
+        res.status(400).send(err.message);
+    }
+})
+
+app.post('/delete-user-asset', auth, async (req, res) => {  
+    try {
+        
+        const user = await db.User.findOne({ 
+            where: { 
+                email: req.user.email 
+            }
+        });
+    
+        const rel = await db.UserHasAssetModel.findOne({
+            where: {
+                UserId: user.id,
+                AssetId: req.body.id
+            }
+        })
+        
+        await rel.destroy();
+    
+        res.status(201).send("Asset Deleted");
+    } catch (err) {
+        res.status(400).send(err.message);
+    }
+})
+
+app.get('/get-asset-user-has-not', auth, async (req, res) => {
+    
+    const user = await db.User.findOne({ 
+        where: { 
+            email: req.user.email 
+        },
+        include: [{ 
+            model: db.Asset
+        }]
+    });
+
+    const Ids = user.Assets.map((el) => el.id)
+
+    const assets = await db.Asset.findAll({
+        where: {
+            id: {
+                [Op.notIn]: Ids
+            }
+        }
+    })
+
+    res.status(201).send(assets)
+
+})
+
+app.post('/add-assets-to-user', auth, async (req, res) => {
+    
+    try {
+
+        const user = await db.User.findOne({ 
+            where: { 
+                email: req.user.email 
+            }
+        });
+
+        console.log(JSON.stringify(user, null, 4))
+    
+        let promises = [];
+        let assets = [];
+    
+        req.body.ids.forEach(id => promises.push(db.Asset.findByPk(id)));
+    
+        await Promise.all(promises).then((values) => assets = values);
+        
+        promises = [];
+        assets.forEach((el) => user.addAsset(el))
+    
+        await Promise.all(promises);
+    
+        res.status(201).send("Assets are successfully added!");
+
+    } catch (err) {
+        res.status(400).send(err.message);
+    }
+
+})
 
 const port = 8080;
 app.listen(port, () => {
