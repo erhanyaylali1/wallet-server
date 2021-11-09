@@ -33,9 +33,7 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     const shorts = user.Assets.map(el => el.short)
     const cryptos = user.Assets.filter(el => el.id < 16).map(el => el.name)
     const funds = user.Assets.filter(el => el.id >= 16).map(el => el.short)
-    const fundsIndex = cryptos.length;
-
-    console.log(cryptos)
+    const crpytosIndex = cryptos.length;
 
     const result = [];      
 	let htmlContents = [];
@@ -49,19 +47,15 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     
     const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
     const getDateDatas = await db.UserTotalAsset.findAll({ where: { date, UserId: user.id } });
-    const getCurrencyDatas = await db.UserEachAssetTotal.findAll({ where: { date, UserId: user.id } });
 
     htmlContents.forEach((el, index) => {
-        console.log("-------------------------")
-        console.log(fundsIndex)
         let name, currentPrice, dailyDifference;
         if(index === htmlContents.length - 1) {
             name = "Dolar";	
             currentPrice = el.window.document.querySelector('.widget-interest-detail.type1 h1 span').textContent;
             dailyDifference = el.window.document.querySelector('.widget-interest-detail.type1 h1 span.bulk').textContent;	
             dailyDifference = dailyDifference.slice(0, 1) + dailyDifference.slice(2, dailyDifference.length)
-        } else if(index >= fundsIndex) {
-            console.log(index)
+        } else if(index >= crpytosIndex) {
             name = el.window.document.getElementById('MainContent_FormViewMainIndicators_LabelFund').textContent;	
             currentPrice = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[0].querySelector("span").textContent.replace(",",".");	
             dailyDifference = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[1].querySelector("span").textContent.slice(1).replace(",",".");
@@ -79,7 +73,7 @@ app.get('/get-user-table-data', auth, async (req, res) => {
 
     let totalAssets = 0;
     result.forEach((el, index) => {
-        if(index < fundsIndex){
+        if(index < crpytosIndex){
             el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice)  * parseFloat(result[result.length - 1].currentPrice.replace(",","."));
             el.short = shorts[index];
             totalAssets += el.asset;
@@ -91,38 +85,18 @@ app.get('/get-user-table-data', auth, async (req, res) => {
         result[index] = el;
     })
 
-    if(getCurrencyDatas.length == 0){
-        for await(const el of result.slice(0, result.length - 1)){
-            const tempAsset = await db.UserEachAssetTotal.create({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date });
-            await user.addEachAssets(tempAsset);
-        }
-    } else {
-        for await(const el of result.slice(0, result.length - 1)){
-            const temp = getCurrencyDatas.filter((el2) => el2.name === el.short);
-            console.log(JSON.stringify(temp, null, 4))
-            if(el.asset > temp[0].totalAsset){
-                await db.UserEachAssetTotal.update({ name: el.short, currentPrice: el.currentPrice, totalAsset: el.asset, date }, {
-                    where: {
-                        id: temp[0].id
-                    }
-                })
-            }
-        }
-    }
-
     if(getDateDatas.length === 0){
         const newTotalAsset = await db.UserTotalAsset.create({ totalAssets, date });
         await user.addTotalAssets(newTotalAsset)
-    } else if (getDateDatas[0].totalAssets < totalAssets) {
+    } else {
         await getDateDatas[0].destroy();
         const newTotalAsset = await db.UserTotalAsset.create({ totalAssets, date });
         await user.addTotalAssets(newTotalAsset)
     }
 
     const history = await db.UserTotalAsset.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 30, where: { UserId: user.id } })
-    const historyCurrency = await db.UserEachAssetTotal.findAll({ order: [ ['createdAt', 'DESC'] ], limit: 240, where: { UserId: user.id } })
-
-    res.send({ result, quantities, totalAssets, history, historyCurrency });
+    
+    res.send({ result, quantities, totalAssets, history });
 
 })
 
