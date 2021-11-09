@@ -89,7 +89,9 @@ app.get('/get-user-table-data', auth, async (req, res) => {
         const newTotalAsset = await db.UserTotalAsset.create({ totalAssets, date });
         await user.addTotalAssets(newTotalAsset)
     } else {
-        await getDateDatas[0].destroy();
+        for await (const el of getDateDatas){
+            await el.destroy();
+        }
         const newTotalAsset = await db.UserTotalAsset.create({ totalAssets, date });
         await user.addTotalAssets(newTotalAsset)
     }
