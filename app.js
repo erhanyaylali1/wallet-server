@@ -48,7 +48,9 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
     const getDateDatas = await db.UserTotalAsset.findAll({ where: { date, UserId: user.id } });
 
-    htmlContents.forEach((el, index) => {
+    let index = -1;
+    for await (const el of htmlContents) {
+        index += 1;
         let name, currentPrice, dailyDifference;
         if(index === htmlContents.length - 1) {
             name = "Dolar";	
@@ -56,9 +58,16 @@ app.get('/get-user-table-data', auth, async (req, res) => {
             dailyDifference = el.window.document.querySelector('.widget-interest-detail.type1 h1 span.bulk').textContent;	
             dailyDifference = dailyDifference.slice(0, 1) + dailyDifference.slice(2, dailyDifference.length)
         } else if(index >= crpytosIndex) {
+            const fund = await db.Asset.findOne({ where: { short: funds[index-crpytosIndex] }});
             name = el.window.document.getElementById('MainContent_FormViewMainIndicators_LabelFund').textContent;	
             currentPrice = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[0].querySelector("span").textContent.replace(",",".");	
             dailyDifference = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[1].querySelector("span").textContent.slice(1).replace(",",".");
+            if(currentPrice == 0){
+                currentPrice = fund.price;
+            } else {
+                fund.price = currentPrice;
+                fund.save();
+            }
         } else {
             name = el.window.document.querySelector('.sc-1q9q90x-0.jCInrl.h1').textContent.slice(0, -3);	
             currentPrice = el.window.document.querySelector('.priceValue').textContent.slice(1).replace(",","");	
@@ -69,7 +78,7 @@ app.get('/get-user-table-data', auth, async (req, res) => {
             }
         }
 		result.push({ name, currentPrice, dailyDifference })
-    });
+    };
 
     let totalAssets = 0;
     result.forEach((el, index) => {

@@ -11,6 +11,9 @@ module.exports = (sequelize, DataTypes) => {
         },
         short: {            
             type: DataTypes.STRING,
+        },
+        price: {
+            type: DataTypes.STRING,
         }
     },{
       freezeTableName: true
