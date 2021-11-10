@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(cors());
 db.sequelize.sync({ alter: false, force: false });
 
-app.get('/get-user-table-data', auth, async (req, res) => {
+app.get('/get-user-table-data', auth, async (req, res) => {     
 
     const user = await db.User.findOne({ 
         where: { 
@@ -33,9 +33,11 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     const shorts = user.Assets.map(el => el.short)
     const cryptos = user.Assets.filter(el => el.id < 16).map(el => el.name)
     const funds = user.Assets.filter(el => el.id >= 16 && el.id < 24).map(el => el.short)
-    const physical = user.Assets.filter(el => el.id >= 24)
+    const currency = user.Assets.filter(el => el.id >= 24 && el.id < 27)
+    const physical = user.Assets.filter(el => el.id >= 27)
     const crpytosIndex = cryptos.length;
     const fundsIndex = funds.length;
+    const currencyIndex = currency.length;
 
     const result = [];      
 	let htmlContents = [];
@@ -43,27 +45,50 @@ app.get('/get-user-table-data', auth, async (req, res) => {
 
     cryptos.forEach((el) => promises.push(got(`https://coinmarketcap.com/currencies/${el}`).then(res => new JSDOM(res.body))))
     funds.forEach((el) => promises.push(got(`https://www.tefas.gov.tr/FonAnaliz.aspx?FonKod=${el}`).then(res => new JSDOM(res.body))))
-    promises.push(got("https://www.bloomberght.com/doviz/dolar").then(res => new JSDOM(res.body)))
+    currency.forEach((el) =>{ 
+        if(el.id === 26){
+            promises.push(got(`https://www.bloomberght.com/doviz/ingiliz-sterlini`).then(res => new JSDOM(res.body)))
+        } else {
+            promises.push(got(`https://www.bloomberght.com/doviz/${el.name.toLowerCase()}`).then(res => new JSDOM(res.body)))
+        }
+    })
+
+    let dolar = {}
+    let isDolarInvolved = false;
+    currency.forEach(el => {
+        if(el.id === 24){
+            isDolarInvolved = true
+        }
+    })
+
+    if(!isDolarInvolved) {
+        promises.push(got("https://www.bloomberght.com/doviz/dolar").then(res => new JSDOM(res.body)))
+    }
 
     await Promise.all(promises).then((values) => htmlContents = values);
     
     const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
     const getDateDatas = await db.UserTotalAsset.findAll({ where: { date, UserId: user.id } });
 
-    let dolar ={}
 
     let index = -1;
     for await (const el of htmlContents) {
         index += 1;
         let name, currentPrice, dailyDifference;
-        if(index === htmlContents.length - 1) {
-            name = "Dolar";	
-            currentPrice = el.window.document.querySelector('.widget-interest-detail.type1 h1 span').textContent;
-            dailyDifference = el.window.document.querySelector('.widget-interest-detail.type1 h1 span.bulk').textContent;	
-            dailyDifference = dailyDifference.slice(0, 1) + dailyDifference.slice(2, dailyDifference.length)
-            dolar = { name, currentPrice, dailyDifference }
-            continue
+        if(index >= crpytosIndex + fundsIndex) {
+            // DÖVİZLER
+            name = el.window.document.querySelector('.widget-breadcrumb.type1 .breadcrumb li:last-child').textContent;	
+            currentPrice = el.window.document.querySelector('.widget-interest-detail.type1 h1 span').textContent.replace(",",".");
+            dailyDifference = el.window.document.querySelector('.widget-interest-detail.type1 h1 span.bulk').textContent.replace(",",".");	
+            dailyDifference = dailyDifference.substring(2)
+            if(name === "DOLAR"){
+                dolar = { name, currentPrice, dailyDifference }
+                if(!isDolarInvolved){
+                    continue
+                }
+            }
         } else if(index >= crpytosIndex) {
+            // YATIRIM FONLARI
             const fund = await db.Asset.findOne({ where: { short: funds[index-crpytosIndex] }});
             name = el.window.document.getElementById('MainContent_FormViewMainIndicators_LabelFund').textContent;	
             currentPrice = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[0].querySelector("span").textContent.replace(",",".");	
@@ -76,6 +101,7 @@ app.get('/get-user-table-data', auth, async (req, res) => {
                 fund.save();
             }
         } else {
+            // KRİPTO PARALAR
             name = el.window.document.querySelector('.sc-1q9q90x-0.jCInrl.h1').textContent.slice(0, -3);	
             currentPrice = el.window.document.querySelector('.priceValue').textContent.slice(1).replace(",","");	
             if(el.window.document.querySelector('.sc-15yy2pl-0.gEePkg')){
@@ -110,17 +136,28 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     let totalAssets = 0;
     result.forEach((el, index) => {
         if(index < crpytosIndex){
-            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice)  * parseFloat(dolar.currentPrice.replace(",","."));
+            // KRİPTOLAR
+            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice)  * parseFloat(dolar.currentPrice);
             el.short = shorts[index];
             totalAssets += el.asset;
+            el.id = user.Assets[index].id;
         } else if (index < crpytosIndex + fundsIndex) {
+            // FONLAR
             el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice.replace(",",""))
             el.short = shorts[index];
             totalAssets += parseFloat(el.asset);
+            el.id = user.Assets[index].id;
+        } else if (index < crpytosIndex + fundsIndex + currencyIndex){
+            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice.replace(",",""))
+            el.short = shorts[index];
+            totalAssets += parseFloat(el.asset);   
+            el.id = user.Assets[index].id;         
         } else {
+            // ALTINLAR
             el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice.replace(",","."))
             el.short = shorts[index];
             totalAssets += parseFloat(el.asset);
+            el.id = user.Assets[index].id;
         }
         result[index] = el;
     })
