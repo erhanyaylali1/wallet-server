@@ -4,9 +4,10 @@ const AssetModel = require('../model/Asset.model');
 const UserHasAssetModel = require('../model/UserHasAsset.model');
 const UserTotalAssetModel = require('../model/UserTotalAsset.model');
 
+require('dotenv').config();
 
-const sequelize = new Sequelize('wallet', 'admin', 'efes1998', {
-    host: 'wallet-history.czbknzpnkjsg.us-east-2.rds.amazonaws.com',
+const sequelize = new Sequelize(process.env.DB, process.env.USER, process.env.PASSWORD, {
+    host: process.env.HOST,
     dialect: 'mysql'
 });
 
