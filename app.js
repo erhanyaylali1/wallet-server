@@ -32,8 +32,10 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     const quantities = user.Assets.map(el => el.UserHasAsset.quantity)
     const shorts = user.Assets.map(el => el.short)
     const cryptos = user.Assets.filter(el => el.id < 16).map(el => el.name)
-    const funds = user.Assets.filter(el => el.id >= 16).map(el => el.short)
+    const funds = user.Assets.filter(el => el.id >= 16 && el.id < 24).map(el => el.short)
+    const physical = user.Assets.filter(el => el.id >= 24)
     const crpytosIndex = cryptos.length;
+    const fundsIndex = funds.length;
 
     const result = [];      
 	let htmlContents = [];
@@ -48,6 +50,8 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     const date = moment().tz("Europe/Istanbul").format("DD/MM/YYYY");
     const getDateDatas = await db.UserTotalAsset.findAll({ where: { date, UserId: user.id } });
 
+    let dolar ={}
+
     let index = -1;
     for await (const el of htmlContents) {
         index += 1;
@@ -57,6 +61,8 @@ app.get('/get-user-table-data', auth, async (req, res) => {
             currentPrice = el.window.document.querySelector('.widget-interest-detail.type1 h1 span').textContent;
             dailyDifference = el.window.document.querySelector('.widget-interest-detail.type1 h1 span.bulk').textContent;	
             dailyDifference = dailyDifference.slice(0, 1) + dailyDifference.slice(2, dailyDifference.length)
+            dolar = { name, currentPrice, dailyDifference }
+            continue
         } else if(index >= crpytosIndex) {
             const fund = await db.Asset.findOne({ where: { short: funds[index-crpytosIndex] }});
             name = el.window.document.getElementById('MainContent_FormViewMainIndicators_LabelFund').textContent;	
@@ -81,14 +87,38 @@ app.get('/get-user-table-data', auth, async (req, res) => {
 		result.push({ name, currentPrice, dailyDifference })
     };
 
+    let altin;
+    await got("https://portal-widgets-v3.foreks.com/gold").then(res => new JSDOM(res.body)).then(res => altin = res.window.document.querySelectorAll(".wrapper tbody tr"))
+    
+
+    physical.forEach(el => {
+        altin.forEach((el2) => {
+            if(el.name !== "Cumhuriyet Altını"){
+                if(el.name === el2.querySelector("td").lastChild.textContent.substring(1)){
+                    const cols = el2.querySelectorAll("td");
+                    result.push({ name: el.name, currentPrice: cols[3].textContent.replace(".",""), dailyDifference: cols[5].textContent.substring(1) })
+                }
+            } else {
+                if("Cumhuriyet" === el2.querySelector("td").lastChild.textContent.substring(1)){
+                    const cols = el2.querySelectorAll("td");
+                    result.push({ name: el.name, currentPrice: cols[3].textContent.replace(".",""), dailyDifference: cols[5].textContent.substring(1) })
+                }
+            }
+        })
+    })
+
     let totalAssets = 0;
     result.forEach((el, index) => {
         if(index < crpytosIndex){
-            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice)  * parseFloat(result[result.length - 1].currentPrice.replace(",","."));
+            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice)  * parseFloat(dolar.currentPrice.replace(",","."));
             el.short = shorts[index];
             totalAssets += el.asset;
-        } else if (index < result.length - 1) {
+        } else if (index < crpytosIndex + fundsIndex) {
             el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice.replace(",",""))
+            el.short = shorts[index];
+            totalAssets += parseFloat(el.asset);
+        } else {
+            el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice.replace(",","."))
             el.short = shorts[index];
             totalAssets += parseFloat(el.asset);
         }
@@ -116,7 +146,7 @@ app.post('/register', async (req, res) => {
 
     try {
 
-        const { name, email, password, selectedCryptos, selectedFunds } = req.body;
+        const { name, email, password, selectedCryptos, selectedFunds, selectedPhysical } = req.body;
     
         if (!(email && password && name)) {
             res.status(400).send("All input is required");
@@ -142,6 +172,7 @@ app.post('/register', async (req, res) => {
 
         selectedFunds.forEach(fund => promises.push(db.Asset.findOne({ where: { short: fund } })))
         selectedCryptos.forEach(coin => promises.push(db.Asset.findOne({ where: { name: coin } })))
+        selectedPhysical.forEach(physical => promises.push(db.Asset.findOne({ where: { name: physical } })))
 
 	    await Promise.all(promises).then((values) => assets = values);
         
@@ -318,8 +349,6 @@ app.post('/add-assets-to-user', auth, async (req, res) => {
                 email: req.user.email 
             }
         });
-
-        console.log(JSON.stringify(user, null, 4))
     
         let promises = [];
         let assets = [];
