@@ -9,8 +9,6 @@ const db = require('./config/db.js');
 const auth = require("./middleware/auth");
 const { Op } = require("sequelize");
 
-require("dotenv").config();
-
 const app = express();
 const { JSDOM } = jsdom;
 
