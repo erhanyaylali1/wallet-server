@@ -64,6 +64,7 @@ app.get('/get-user-table-data', auth, async (req, res) => {
             dailyDifference = el.window.document.querySelectorAll('#MainContent_PanelInfo .main-indicators ul.top-list li')[1].querySelector("span").textContent.slice(1).replace(",",".");
             if(currentPrice == 0){
                 currentPrice = fund.price;
+                dailyDifference = "0"
             } else {
                 fund.price = currentPrice;
                 fund.save();
