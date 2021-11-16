@@ -14,6 +14,11 @@ Features
 
 -EVERY 10 SECONDS, VALUE OF ASSETS ARE UPDATED
 
+Technologies
+--------------------------------
+- React, Redux, Ant Desing UI Kit, Material UI, Chart JS
+- Node JS, Express JS, Bcryptjs for Password, Jsonwebtoken, Sequelize, MySQL
+
 
 Visit Website Live: http://portfolio-wallet.s3-website.eu-north-1.amazonaws.com/
 
