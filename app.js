@@ -16,6 +16,8 @@ app.use(express.json());
 app.use(cors());
 db.sequelize.sync({ alter: false, force: false });
 
+require('dotenv').config();
+
 app.get('/get-user-table-data', auth, async (req, res) => {     
 
     const user = await db.User.findOne({ 
@@ -112,25 +114,23 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     };
 
     let altin;
-    await got("https://portal-widgets-v3.foreks.com/gold").then(res => new JSDOM(res.body)).then(res => altin = res.window.document.querySelectorAll(".wrapper tbody tr"))
+    await got("https://finans.mynet.com/altin/").then(res => new JSDOM(res.body)).then(res => altin = res.window.document.querySelectorAll("tbody.tbody-type-default tr"))
     
-
     physical.forEach(el => {
         altin.forEach((el2) => {
-            if(el.name !== "Cumhuriyet Altını"){
-                if(el.name === el2.querySelector("td").lastChild.textContent.substring(1)){
+            if(el.name != "22 Ayar Altın"){
+                if(el.name === el2.querySelector("td strong a").textContent){
                     const cols = el2.querySelectorAll("td");
-                    result.push({ name: el.name, currentPrice: cols[3].textContent.replace(".",""), dailyDifference: cols[5].textContent.substring(1) })
+                    result.push({ short: el.short, name: el.name, currentPrice: cols[4].textContent.replace(".","").replace(",","."), dailyDifference: cols[5].textContent.slice(0, -1).replace(",",".") })
                 }
             } else {
-                if("Cumhuriyet" === el2.querySelector("td").lastChild.textContent.substring(1)){
+                if("22 Ayar Saf Altın Gram/TL" === el2.querySelector("td strong a").textContent){
                     const cols = el2.querySelectorAll("td");
-                    result.push({ name: el.name, currentPrice: cols[3].textContent.replace(".",""), dailyDifference: cols[5].textContent.substring(1) })
+                    result.push({ short: el.short, name: el.name, currentPrice: cols[4].textContent.replace(".","").replace(",","."), dailyDifference: cols[5].textContent.slice(0, -1).replace(",",".") })
                 }
             }
         })
     })
-
     let totalAssets = 0;
     result.forEach((el, index) => {
         if(index < crpytosIndex){
@@ -153,7 +153,6 @@ app.get('/get-user-table-data', auth, async (req, res) => {
         } else {
             // ALTINLAR
             el.asset = parseFloat(quantities[index]) * parseFloat(el.currentPrice.replace(",","."))
-            el.short = shorts[index];
             totalAssets += parseFloat(el.asset);
             el.id = user.Assets[index].id;
         }
