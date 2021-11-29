@@ -31,10 +31,10 @@ app.get('/get-user-table-data', auth, async (req, res) => {
 
     const quantities = user.Assets.map(el => el.UserHasAsset.quantity)
     const shorts = user.Assets.map(el => el.short)
-    const cryptos = user.Assets.filter(el => el.id < 16).map(el => el.name)
-    const funds = user.Assets.filter(el => el.id >= 16 && el.id < 24).map(el => el.short)
-    const currency = user.Assets.filter(el => el.id >= 24 && el.id < 27)
-    const physical = user.Assets.filter(el => el.id >= 27)
+    const cryptos = user.Assets.filter(el => el.id < 20).map(el => el.name)
+    const funds = user.Assets.filter(el => el.id >= 56 && el.id < 90).map(el => el.short)
+    const currency = user.Assets.filter(el => el.id >= 93 && el.id < 96)
+    const physical = user.Assets.filter(el => el.id >= 96)
     const crpytosIndex = cryptos.length;
     const fundsIndex = funds.length;
     const currencyIndex = currency.length;
