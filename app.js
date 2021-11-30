@@ -118,13 +118,18 @@ app.get('/get-user-table-data', auth, async (req, res) => {
     
     physical.forEach(el => {
         altin.forEach((el2) => {
-            if(el.name != "22 Ayar Altın"){
-                if(el.name === el2.querySelector("td strong a").textContent){
+            if(el.name === "Gram Altın"){
+                if("Spot Altın TL/Gr" === el2.querySelector("td strong a").textContent){
+                    const cols = el2.querySelectorAll("td");
+                    result.push({ short: el.short, name: el.name, currentPrice: cols[4].textContent.replace(".","").replace(",","."), dailyDifference: cols[5].textContent.slice(0, -1).replace(",",".") })
+                }
+            } else if(el.name === "22 Ayar Altın") {
+                if("22 Ayar Saf Altın Gram/TL" === el2.querySelector("td strong a").textContent){
                     const cols = el2.querySelectorAll("td");
                     result.push({ short: el.short, name: el.name, currentPrice: cols[4].textContent.replace(".","").replace(",","."), dailyDifference: cols[5].textContent.slice(0, -1).replace(",",".") })
                 }
             } else {
-                if("22 Ayar Saf Altın Gram/TL" === el2.querySelector("td strong a").textContent){
+                if(el.name === el2.querySelector("td strong a").textContent){
                     const cols = el2.querySelectorAll("td");
                     result.push({ short: el.short, name: el.name, currentPrice: cols[4].textContent.replace(".","").replace(",","."), dailyDifference: cols[5].textContent.slice(0, -1).replace(",",".") })
                 }
